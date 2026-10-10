@@ -195,12 +195,12 @@
 
   <!-- presets: wobble filter on rects only, labels stay crisp -->
   <g id="cluster" font-size="19" font-weight="600" fill="#E8DCC8">
-    <g id="p0" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1201" y="860" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1286" y="890" text-anchor="middle">Squeaker</text></g>
-    <g id="p1" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1387" y="860" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1472" y="890" text-anchor="middle">Thunderclap</text></g>
-    <g id="p2" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="860" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="890" text-anchor="middle">Machine-Gun</text></g>
-    <g id="p3" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1201" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1286" y="955" text-anchor="middle">Flapper</text></g>
-    <g id="p4" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1387" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1472" y="955" text-anchor="middle">Wet One</text></g>
-    <g id="pR" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="955" text-anchor="middle">🎲 Random</text></g>
+    <g id="p0" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1201" y="828" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1286" y="858" text-anchor="middle">Squeaker</text></g>
+    <g id="p1" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1387" y="828" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1472" y="858" text-anchor="middle">Thunderclap</text></g>
+    <g id="p2" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="828" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="858" text-anchor="middle">Machine-Gun</text></g>
+    <g id="p3" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1201" y="893" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1286" y="923" text-anchor="middle">Flapper</text></g>
+    <g id="p4" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1387" y="893" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1472" y="923" text-anchor="middle">Wet One</text></g>
+    <g id="pR" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="893" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="923" text-anchor="middle">🎲 Random</text></g>
   </g>
 
   <!-- on-screen piano (QWERTYUIOP white / 1245689 black, clickable) -->
@@ -596,7 +596,7 @@ const fRev   = fader('reverbHandle', 'reverb', EP.reverb, true);
 // Q W E R T Y U I O P = white C..E(2 oct), 1 2 3 4 5 6 7 8 9 0 = black keys
 // sits under the preset cluster: x 1201..1739, y 981..1045
 const pianoG = $('piano');
-const PN = { x: 1201, y: 981, wW: 52, wH: 58, gap: 2 };
+const PN = { x: 1201, y: 992, wW: 52, wH: 52, gap: 2 };
 PN.wTotal = PN.wW * 10 + PN.gap * 9;
 const WHITE_KEYS = [
   { k: 'q', n: 60 }, { k: 'w', n: 62 }, { k: 'e', n: 64 }, { k: 'r', n: 65 },
