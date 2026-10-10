@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Brown Trombone</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💨</text></svg>"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: linear-gradient(#181818, #3A2121); font-family: 'Segoe UI', Helvetica, Arial, sans-serif; }
+  #gui { width: 100vw; height: 100vh; display: block; touch-action: none; }
+  .hit { cursor: pointer; }
+  .knob, .dot, .handle { cursor: grab; }
+  .knob:active, .dot:active, .handle:active { cursor: grabbing; }
+  #xyPad { cursor: crosshair; }
+  .pill-btn { transition: fill .15s; }
+  .pill-btn:hover { fill: #3a2a1a; }
+  .pill-btn.on { fill: #4a3020; }
+  #overlay {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    gap: 2.2rem; text-align: center; cursor: pointer; color: #fff;
+    background: #000;
+  }
+  #overlay.hidden { display: none; }
+  #overlay .warn {
+    color: #fff; max-width: 34rem; font-size: 1.05rem; line-height: 1.8;
+    padding: 0 1.2rem;
+  }
+  #overlay button {
+    background: transparent; color: #fff; border: 1px solid #fff;
+    padding: .6rem 2rem; cursor: pointer; font-family: inherit;
+    font-size: .95rem; letter-spacing: .06em;
+  }
+  #overlay button:hover { background: #fff; color: #000; }
+  #fx {
+    position: fixed; inset: 0; z-index: 5;
+    width: 100vw; height: 100vh;
+    pointer-events: none;
+  }
+  .sheet {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #000; color: #fff;
+    opacity: 0; pointer-events: none; transition: opacity .35s ease;
+  }
+  .sheet.open { opacity: 1; pointer-events: auto; }
+  .sheet .inner { max-width: 40rem; margin: 1rem; font-size: .82rem; line-height: 1.7; }
+  .sheet h2 { letter-spacing: .15em; font-size: 1.05rem; margin-bottom: .8rem; }
+  .sheet a { color: #fff; text-decoration: underline; }
+  .sheet .close {
+    margin-top: 1.2rem; padding: .5rem 2.2rem;
+    background: transparent; color: #fff; border: 1px solid #fff;
+    cursor: pointer; font-family: inherit; font-size: .82rem; letter-spacing: .1em;
+  }
+  .sheet .close:hover { background: #fff; color: #000; }
+  #midiModal .sub { color: #aaa; margin-bottom: 1.2rem; }
+  #midiModal .row { display: flex; align-items: center; gap: 1.2rem; margin: .55rem 0; font-size: .9rem; }
+  #midiModal .row .name { min-width: 5rem; }
+  #midiModal .row .cc { color: #888; font-family: Consolas, monospace; min-width: 4.5rem; }
+  #midiModal button.learn {
+    padding: .3rem 1rem; background: transparent; color: #fff;
+    border: 1px solid #fff; cursor: pointer; font-family: inherit; font-size: .78rem;
+  }
+  #midiModal button.learn:hover, #midiModal button.learn.listening { background: #fff; color: #000; }
+</style>
+</head>
+<body>
+
+<svg id="gui" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="bgGrad" x1="960" y1="0" x2="960" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#181818"/><stop offset="1" stop-color="#3A2121"/>
+    </linearGradient>
+    <linearGradient id="cheekL" x1="0" y1="382" x2="867" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#583629"/><stop offset="1" stop-color="#8B5A46"/>
+    </linearGradient>
+    <linearGradient id="cheekR" x1="1053" y1="385" x2="1920" y2="385" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5A46"/><stop offset="1" stop-color="#583629"/>
+    </linearGradient>
+    <filter id="wobble" x="-12%" y="-12%" width="124%" height="124%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="2" seed="1" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="8" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bgGrad)"/>
+
+  <!-- animated butt cross-section: sphincter centre + end react to parameters -->
+  <g id="butt">
+    <path id="cheekLPath" fill="url(#cheekL)" stroke="#B56464" stroke-width="3"/>
+    <path id="cheekRPath" fill="url(#cheekR)" stroke="#B56464" stroke-width="3"/>
+  </g>
+
+  <!-- performance XY pad: rectangle spanning the Pinch / Strain / Cheek panels -->
+  <rect id="xyPad" x="1096" y="292" width="523" height="429" rx="14"
+        fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.4)"
+        stroke-width="2" stroke-dasharray="9 9" pointer-events="all"/>
+
+  <!-- Pinch panel -->
+  <g id="pinchPanel" pointer-events="none">
+    <rect x="1096.5" y="292.5" width="131" height="156" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="1162" y="352" font-size="21" font-weight="700" text-anchor="middle" fill="white">Pinch</text>
+    <rect x="1110" y="400" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="pinchKnob" class="knob" x="1152" y="403" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+  </g>
+
+  <!-- Strain panel -->
+  <g id="strainPanel" pointer-events="none">
+    <rect x="1095.5" y="557.5" width="131" height="156" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="1161" y="617" font-size="21" font-weight="700" text-anchor="middle" fill="white">Strain</text>
+    <rect x="1109" y="665" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="strainKnob" class="knob" x="1167" y="668" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+  </g>
+
+  <!-- Cheek panel -->
+  <g id="cheekPanel" pointer-events="none">
+    <rect x="1463" y="590" width="156" height="131" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <rect x="1476" y="603.5" width="28" height="104" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="cheekKnob" class="knob" x="1479" y="644.5" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+    <text x="1547" y="660" font-size="21" font-weight="700" fill="white">Cheek</text>
+  </g>
+
+  <!-- XY pad crosshair -->
+  <g id="crosshair" pointer-events="none" opacity="0">
+    <line id="chV" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <line id="chH" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <circle id="chDot" r="7" fill="none" stroke="#fff" stroke-width="2"/>
+  </g>
+
+  <!-- Volume ADSR -->
+  <text x="73" y="800" font-size="21" font-weight="700" fill="#E8DCC8">Volume ADSR</text>
+  <g id="volPanel">
+    <rect x="27" y="820" width="413" height="230" rx="14" fill="#E2E2E2"/>
+    <g id="volGrid"></g>
+    <path id="volCurve" fill="#D65A9A" fill-opacity="0.12" stroke="#D65A9A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle id="volA" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <circle id="volD" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <circle id="volS" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <circle id="volR" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <text id="volAL" font-size="14" font-weight="700" fill="black">A</text>
+    <text id="volDL" font-size="14" font-weight="700" fill="black">D</text>
+    <text id="volSL" font-size="14" font-weight="700" fill="black">S</text>
+    <text id="volRL" font-size="14" font-weight="700" fill="black">R</text>
+    <text x="32" y="840" font-size="13" fill="black">Level</text>
+    <text x="75" y="1023" font-size="13" fill="black">NOTE ON</text>
+    <text id="volNoteOff" x="331" y="1023" font-size="13" fill="black">NOTE OFF</text>
+    <text x="381" y="1043" font-size="13" fill="black">Time →</text>
+  </g>
+
+  <!-- Pitch ADSR -->
+  <text x="508" y="800" font-size="21" font-weight="700" fill="#E8DCC8">Pitch ADSR</text>
+  <g id="pitPanel">
+    <rect x="462" y="820" width="413" height="230" rx="14" fill="#E2E2E2"/>
+    <g id="pitGrid"></g>
+    <path id="pitCurve" fill="#D65A9A" fill-opacity="0.12" stroke="#D65A9A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle id="pitA" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <circle id="pitD" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <circle id="pitS" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <circle id="pitR" class="dot" r="6.1" fill="#D65A9A" stroke="black"/>
+    <text id="pitAL" font-size="14" font-weight="700" fill="black">A</text>
+    <text id="pitDL" font-size="14" font-weight="700" fill="black">D</text>
+    <text id="pitSL" font-size="14" font-weight="700" fill="black">S</text>
+    <text id="pitRL" font-size="14" font-weight="700" fill="black">R</text>
+    <text x="467" y="840" font-size="13" fill="black">Level</text>
+    <text x="510" y="1023" font-size="13" fill="black">NOTE ON</text>
+    <text id="pitNoteOff" x="766" y="1023" font-size="13" fill="black">NOTE OFF</text>
+    <text x="816" y="1043" font-size="13" fill="black">Time →</text>
+  </g>
+
+  <!-- Glide fader -->
+  <g id="glidePanel">
+    <rect x="897" y="820" width="125" height="230" rx="14" fill="#E2E2E2"/>
+    <text x="959.5" y="854" font-size="18" font-weight="700" text-anchor="middle" fill="black">Glide</text>
+    <rect x="935" y="867" width="50" height="161" rx="25" fill="#B4B4B4"/>
+    <rect id="glideHandle" class="handle" x="935" y="943" width="50" height="50" rx="25" fill="#575757"/>
+  </g>
+
+  <!-- Bend Range fader -->
+  <g id="bendPanel">
+    <rect x="1034" y="820" width="145" height="230" rx="14" fill="#E2E2E2"/>
+    <text x="1106.5" y="854" font-size="18" font-weight="700" text-anchor="middle" fill="black">Bend Range</text>
+    <rect x="1083" y="867" width="50" height="161" rx="25" fill="#B4B4B4"/>
+    <rect id="bendHandle" class="handle" x="1083" y="950" width="50" height="50" rx="25" fill="#575757"/>
+  </g>
+
+  <!-- Reverb fader -->
+  <g id="reverbPanel">
+    <rect x="1765" y="820" width="125" height="230" rx="14" fill="#E2E2E2"/>
+    <text x="1827.5" y="854" font-size="18" font-weight="700" text-anchor="middle" fill="black">Reverb</text>
+    <rect x="1803" y="867" width="50" height="161" rx="25" fill="#B4B4B4"/>
+    <rect id="reverbHandle" class="handle" x="1803" y="922.5" width="50" height="50" rx="25" fill="#575757"/>
+  </g>
+
+  <!-- presets: wobble filter on rects only, labels stay crisp -->
+  <g id="cluster" font-size="19" font-weight="600" fill="#E8DCC8">
+    <g id="p0" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1201" y="860" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1286" y="890" text-anchor="middle">Squeaker</text></g>
+    <g id="p1" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1387" y="860" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1472" y="890" text-anchor="middle">Thunderclap</text></g>
+    <g id="p2" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="860" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="890" text-anchor="middle">Machine-Gun</text></g>
+    <g id="p3" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1201" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1286" y="955" text-anchor="middle">Flapper</text></g>
+    <g id="p4" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1387" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1472" y="955" text-anchor="middle">Wet One</text></g>
+    <g id="pR" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="955" text-anchor="middle">🎲 Random</text></g>
+  </g>
+
+  <!-- About + MIDI buttons: filter on rect only -->
+  <g id="aboutBtn" class="hit">
+    <rect filter="url(#wobble)" x="40" y="34" width="112" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/>
+    <text x="96" y="65" font-size="21" font-weight="600" text-anchor="middle" fill="#E8DCC8">About</text>
+  </g>
+  <g id="midiBtn" class="hit">
+    <rect filter="url(#wobble)" x="164" y="34" width="112" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/>
+    <text x="220" y="65" font-size="21" font-weight="600" text-anchor="middle" fill="#E8DCC8">MIDI</text>
+  </g>
+</svg>
+
+<canvas id="fx"></canvas>
+
+<div id="overlay">
+  <div class="warn">Warning: This might seem gross to some people.<br/>Please take care of yourself.</div>
+  <button id="proceedBtn">[ Proceed ]</button>
+</div>
+
+<div id="about" class="sheet">
+  <div class="inner">
+    <h2>BROWN TROMBONE</h2>
+    <p>A browser-based fart synthesizer based on CompuFart.<br/>Compiled from Cmajor DSP to WebAssembly and driven by the Web Audio API.</p>
+    <p style="margin-top:.7rem">Also it can be played by MIDI keyboard and controller.</p>
+    <p style="margin-top:.9rem"><b>Controls</b></p>
+    <p style="margin-top:.5rem"><b>Playing:</b> press and hold anywhere inside the dashed pad. <b>Left</b> = more Strain — the anal end constricts. <b>Right</b> = less Strain — the end relaxes. <b>Down</b> = more Cheek — the whole canal clenches. <b>Mouse wheel over the pad</b> = Pinch — the sphincter centre tightens (scroll up) or opens (scroll down). Keep holding and move to morph the sound; the cross-section follows in real time.</p>
+    <p style="margin-top:.7rem"><b>Fine controls:</b> drag the pink ADSR dots for the volume/pitch envelopes, the panel knobs, and the Glide / Bend Range / Reverb faders. SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend.</p>
+    <p style="margin-top:.7rem"><b>Piano keys:</b> play with your computer keyboard like a piano —<br/>
+    <span style="font-family:Consolas,monospace;color:#ddd;background:#111;padding:.4rem .6rem;display:inline-block;margin-top:.3rem">
+    white&nbsp;keys: Q W E R T Y U I O P &nbsp;·&nbsp; black&nbsp;keys: 1 2 3 4 5 6 7 8 9 0</span></p>
+    <p style="margin-top:.7rem"><b>Shortcuts:</b> SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend · mouse wheel on pad = Pinch · mouse wheel on Pitch ADSR = env amount.</p>
+    <p style="margin-top:.9rem;color:#888;font-size:.72rem">Engine: CompuFart © Audolon (alexmfink), MIT licence. Inspired by Pink Trombone by Neil Thapen.</p>
+    <p style="color:#888;font-size:.72rem">Vibe-coded by Cybersonus (<a href="https://pearlorigin.org" target="_blank">https://pearlorigin.org</a>, <a href="https://x.com/cybersonus" target="_blank">https://x.com/cybersonus</a>)</p>
+    <button class="close" id="aboutClose">Close</button>
+  </div>
+</div>
+
+<div id="midiModal" class="sheet">
+  <div class="inner">
+    <h2>MIDI</h2>
+    <p class="sub">Keys play pitch — any note-on blasts at that pitch, pitch bend passes through. Click LEARN, then move a CC knob/slider on your device to bind it:</p>
+    <div class="row"><span class="name">Pinch</span><button class="learn" id="learnPinch">LEARN</button><span class="cc" id="ccPinch">&mdash;</span></div>
+    <div class="row"><span class="name">Strain</span><button class="learn" id="learnStrain">LEARN</button><span class="cc" id="ccStrain">&mdash;</span></div>
+    <div class="row"><span class="name">Cheek</span><button class="learn" id="learnCheek">LEARN</button><span class="cc" id="ccCheek">&mdash;</span></div>
+    <button class="learn" id="midiClear" style="margin-top:1rem">CLEAR ALL</button>
+    <br/>
+    <button class="close" id="midiClose">Close</button>
+  </div>
+</div>
+
+<script type="module">
+import * as patch from "./cmaj_CompuFart.js";
+
+const $ = id => document.getElementById(id);
+const svg = $('gui');
+const NS = 'http://www.w3.org/2000/svg';
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
+let connection = null, audioContext = null;
+const state = { active: false };
+
+function setParam(ep, v) { if (connection) connection.sendEventOrValue(ep, v); }
+function sendMIDI(word) { if (connection) connection.sendMIDIInputEvent('in_midi', word); }
+
+let lastNote = 60;
+function noteOn(note = lastNote, vel = 100) {
+  lastNote = note;
+  sendMIDI((0x90 << 16) | ((note & 0x7F) << 8) | (vel & 0x7F));
+  $('xyPad').setAttribute('fill', 'rgba(255,255,255,0.10)');
+  state.active = true;
+  fx.emitBurst();
+}
+function noteOff() {
+  sendMIDI((0x80 << 16) | ((lastNote & 0x7F) << 8) | 0);
+  $('xyPad').setAttribute('fill', 'rgba(255,255,255,0.05)');
+  state.active = false;
+}
+function sendBend(v) {
+  const lsb = v & 0x7F, msb = (v >> 7) & 0x7F;
+  sendMIDI((0xE0 << 16) | (lsb << 8) | msb);
+}
+
+// ---------- SVG helpers ----------
+function svgPoint(e) {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const m = svg.getScreenCTM();
+  if (!m) return { x: 0, y: 0 };
+  const p = pt.matrixTransform(m.inverse());
+  return { x: p.x, y: p.y };
+}
+
+function drag(el, onMove) {
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    onMove(svgPoint(e));
+    const move = ev => onMove(svgPoint(ev));
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+  });
+}
+
+// smooth closed path through points (quadratic through midpoints)
+function smoothClosed(pts) {
+  const n = pts.length;
+  const f = x => x.toFixed(1);
+  const mx0 = (pts[n - 1][0] + pts[0][0]) / 2, my0 = (pts[n - 1][1] + pts[0][1]) / 2;
+  let d = `M${f(mx0)},${f(my0)}`;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n];
+    d += ` Q${f(p[0])},${f(p[1])} ${f((p[0] + q[0]) / 2)},${f((p[1] + q[1]) / 2)}`;
+  }
+  return d + ' Z';
+}
+
+function sstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+
+// turbulent wobble filter primitives (buttons)
+const wobbleTurb = document.querySelector('#wobble feTurbulence');
+let lastSeed = -1;
+
+// ---------- fart particle FX ----------
+const fx = (() => {
+  const cv = $('fx');
+  const c2 = cv.getContext('2d');
+  const parts = [];
+  let W = 0, H = 0;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  function resize() {
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // emitter position: below the sphincter end, in screen coords
+  function emitter() {
+    const svgRect = svg.getBoundingClientRect();
+    const sc = Math.min(svgRect.width / 1920, svgRect.height / 1080);
+    const ox = svgRect.left + (svgRect.width - 1920 * sc) / 2;
+    const oy = svgRect.top + (svgRect.height - 1080 * sc) / 2;
+    return { x: ox + 960 * sc, y: oy + 745 * sc, sc };
+  }
+
+  function emitBurst() {
+    const e = emitter();
+    const n = 8 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < n; i++) {
+      const spread = (Math.random() - 0.5) * 70 * e.sc;
+      parts.push({
+        x: e.x + spread,
+        y: e.y,
+        vx: spread * 0.02 + (Math.random() - 0.5) * 0.6,
+        vy: 1.4 + Math.random() * 2.2,
+        r: (2 + Math.random() * 4) * Math.max(0.6, e.sc),
+        life: 0,
+        max: 0.9 + Math.random() * 0.8,
+        wob: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  function step(dt) {
+    c2.clearRect(0, 0, W, H);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.life += dt;
+      if (p.life > p.max) { parts.splice(i, 1); continue; }
+      p.wob += dt * 6;
+      p.x += (p.vx + Math.sin(p.wob) * 0.5) * dt * 60;
+      p.y += p.vy * dt * 60;
+      p.r += dt * 6;
+      const t = p.life / p.max;
+      const a = 0.28 * (1 - t);
+      c2.fillStyle = `rgba(154,222,160,${a.toFixed(3)})`;
+      c2.beginPath();
+      c2.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      c2.fill();
+    }
+  }
+
+  // sustained emission while a note is held
+  let emitAcc = 0;
+  return {
+    emitBurst,
+    update(dt) {
+      if (state.active) {
+        emitAcc += dt;
+        if (emitAcc > 0.06) { emitAcc = 0; emitBurst(); }
+      }
+      step(dt);
+    },
+  };
+})();
+
+// ---------- parameters ----------
+const P = {
+  pinch: 0.5, strain: 0.7, cheek: 0.5, strainI: 0.5,
+  atk: 0.053, dec: 0.14, sus: 0.39, rel: 1.12,
+  patk: 0.053, pdec: 0.14, psus: 0.39, prel: 0.71, amt: 2,
+  glide: 0.1, bend: 12, reverb: 1,
+};
+const EP = {
+  pinch: 'in_pinch', strain: 'in_strain', cheek: 'in_cheek', strainI: 'in_strainIntensity',
+  atk: 'in_pressureEnvAttackTime', dec: 'in_pressureEnvDecayTime',
+  sus: 'in_pressureEnvSustainLevel', rel: 'in_pressureEnvReleaseTime',
+  patk: 'in_pitchEnvAttackTime', pdec: 'in_pitchEnvDecayTime',
+  psus: 'in_pitchEnvSustainLevel', prel: 'in_pitchEnvReleaseTime', amt: 'in_pitchEnvAmount',
+  glide: 'in_pitchGlideTime', bend: 'in_pitchBendRangeSemitones', reverb: 'in_reverbMode',
+};
+
+// ---------- ADSR (linear, through the dots; letters follow the dots) ----------
+function makeADSR(prefix, px, py) {
+  const W = 347.4, H = 154.95;
+  const grid = $(prefix + 'Grid');
+  for (let i = 0; i <= 7; i++) {
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('x1', px + i * W / 7); l.setAttribute('y1', py);
+    l.setAttribute('x2', px + i * W / 7); l.setAttribute('y2', py + H);
+    l.setAttribute('stroke', 'black'); l.setAttribute('stroke-opacity', '0.08');
+    grid.appendChild(l);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('x1', px); l.setAttribute('y1', py + i * H / 5);
+    l.setAttribute('x2', px + W); l.setAttribute('y2', py + i * H / 5);
+    l.setAttribute('stroke', 'black'); l.setAttribute('stroke-opacity', '0.1');
+    grid.appendChild(l);
+  }
+  const ax = document.createElementNS(NS, 'line');
+  ax.setAttribute('x1', px); ax.setAttribute('y1', py + H); ax.setAttribute('x2', px + W); ax.setAttribute('y2', py + H);
+  ax.setAttribute('stroke', 'black'); ax.setAttribute('stroke-opacity', '0.5'); grid.appendChild(ax);
+  const ay = document.createElementNS(NS, 'line');
+  ay.setAttribute('x1', px); ay.setAttribute('y1', py); ay.setAttribute('x2', px); ay.setAttribute('y2', py + H);
+  ay.setAttribute('stroke', 'black'); ay.setAttribute('stroke-opacity', '0.5'); grid.appendChild(ay);
+
+  const d = { ax: 0, ay: 0, dx: 0, dy: 0, sx: 0, sy: 0, rx: 0, ry: 0 };
+
+  function fromParams(atk, dec, sus, rel) {
+    d.ax = clamp(px + 8 + ((Math.log10(Math.max(atk, 0.001)) + 3) / 3) * 87, px + 8, px + 95);
+    d.dx = clamp(d.ax + 12 + ((Math.log10(Math.max(dec, 0.001)) + 3) / 3.7) * 100, d.ax + 12, d.ax + 112);
+    d.sx = clamp(d.dx + 60, d.dx + 12, px + 270);
+    d.sy = py + (1 - clamp(sus, 0, 1)) * H;
+    const plateau = d.sx + 69;
+    d.rx = clamp(plateau + ((Math.log10(Math.max(rel, 0.001)) + 3) / 3.7) * (px + W - 20 - plateau), plateau + 10, px + W - 7);
+  }
+
+  function toParams() {
+    const atk = Math.pow(10, -3 + ((d.ax - px - 8) / 87) * 3);
+    const dec = Math.pow(10, -3 + (((d.dx - d.ax - 12) / 100)) * 3.7);
+    const sus = clamp(1 - (d.sy - py) / H, 0, 1);
+    const plateau = d.sx + 69;
+    const rel = Math.pow(10, -3 + (clamp((d.rx - plateau) / (px + W - 20 - plateau), 0, 1)) * 3.7);
+    return { atk, dec, sus, rel };
+  }
+
+  function draw() {
+    d.ay = py + 24;          // attack peak
+    d.dy = d.sy - 8;         // decay knee (slightly above sustain)
+    d.ry = py + H;           // release ends at baseline
+    const plateau = d.sx + 69;
+    // fully linear path passing exactly through A, D, S and R dots
+    const path = `M${px},${(py + H).toFixed(1)}` +
+                 ` L${d.ax.toFixed(1)},${d.ay.toFixed(1)}` +
+                 ` L${d.dx.toFixed(1)},${d.dy.toFixed(1)}` +
+                 ` L${d.sx.toFixed(1)},${d.sy.toFixed(1)}` +
+                 ` H${plateau.toFixed(1)}` +
+                 ` L${d.rx.toFixed(1)},${d.ry.toFixed(1)}`;
+    $(prefix + 'Curve').setAttribute('d', path);
+    const set = (id, x, y) => { const c = $(id); c.setAttribute('cx', x); c.setAttribute('cy', y); };
+    set(prefix + 'A', d.ax, d.ay);
+    set(prefix + 'D', d.dx, d.dy);
+    set(prefix + 'S', d.sx, d.sy);
+    set(prefix + 'R', d.rx, d.ry);
+    // A / D / S / R letters follow their dots
+    const setL = (id, x, y) => {
+      const t = $(id);
+      t.setAttribute('x', Math.min(x + 9, px + W - 14).toFixed(1));
+      t.setAttribute('y', (y - 8).toFixed(1));
+    };
+    setL(prefix + 'AL', d.ax, d.ay);
+    setL(prefix + 'DL', d.dx, d.dy);
+    setL(prefix + 'SL', d.sx, d.sy);
+    setL(prefix + 'RL', d.rx, d.ry);
+    $(prefix + 'NoteOff').setAttribute('x', plateau - 48);
+  }
+
+  drag($(prefix + 'A'), p => {
+    d.ax = clamp(p.x, px + 8, px + 95);
+    if (d.ax + 12 > d.dx) d.dx = d.ax + 12;
+    commit();
+  });
+  drag($(prefix + 'D'), p => {
+    d.dx = clamp(p.x, d.ax + 12, d.ax + 112);
+    if (d.dx + 12 > d.sx) d.sx = d.dx + 12;
+    commit();
+  });
+  drag($(prefix + 'S'), p => {
+    d.sx = clamp(p.x, d.dx + 12, px + 270);
+    d.sy = clamp(p.y, py + 10, py + 149);
+    if (d.sx + 79 > d.rx) d.rx = d.sx + 79;
+    commit();
+  });
+  drag($(prefix + 'R'), p => {
+    d.rx = clamp(p.x, d.sx + 79, px + W - 7);
+    commit();
+  });
+
+  function commit() {
+    draw();
+    const { atk, dec, sus, rel } = toParams();
+    if (prefix === 'vol') { P.atk = atk; P.dec = dec; P.sus = sus; P.rel = rel;
+      setParam(EP.atk, atk); setParam(EP.dec, dec); setParam(EP.sus, sus); setParam(EP.rel, rel); }
+    else { P.patk = atk; P.pdec = dec; P.psus = sus; P.prel = rel;
+      setParam(EP.patk, atk); setParam(EP.pdec, dec); setParam(EP.psus, sus); setParam(EP.prel, rel); }
+  }
+
+  return { fromParams, draw, commit };
+}
+
+const vol = makeADSR('vol', 73.16, 846.63);
+const pit = makeADSR('pit', 508.16, 846.63);
+
+// pitch env amount: mouse wheel over the Pitch ADSR panel
+pitPanel.addEventListener('wheel', e => {
+  e.preventDefault();
+  P.amt = clamp(P.amt + (e.deltaY < 0 ? 0.1 : -0.1), -3, 3);
+  setParam(EP.amt, P.amt);
+}, { passive: false });
+
+// ---------- panel sliders ----------
+function sliderH(knobId, pillX, pillW, key, ep) {
+  const knob = $(knobId);
+  const kx0 = pillX + 3, kSpan = pillW - 28;
+  const position = () => knob.setAttribute('x', kx0 + P[key] * kSpan);
+  drag(knob, p => {
+    P[key] = clamp((p.x - kx0) / kSpan, 0, 1);
+    position(); setParam(ep, P[key]);
+  });
+  return { position };
+}
+function sliderV(knobId, pillY, pillH, key, ep) {
+  const knob = $(knobId);
+  const ky0 = pillY + 3, kSpan = pillH - 28;
+  const position = () => knob.setAttribute('y', ky0 + P[key] * kSpan);
+  drag(knob, p => {
+    P[key] = clamp((p.y - ky0) / kSpan, 0, 1);
+    position(); setParam(ep, P[key]);
+  });
+  return { position };
+}
+
+const sPinch  = sliderH('pinchKnob', 1110, 104, 'pinch', EP.pinch);
+const sStrain = sliderH('strainKnob', 1109, 104, 'strain', EP.strain);
+const sCheek  = sliderV('cheekKnob', 603.5, 104, 'cheek', EP.cheek);
+
+// ---------- faders ----------
+function fader(handleId, key, ep, snap) {
+  const h = $(handleId);
+  const yTop = 867, yBot = 978;
+  const span = yBot - yTop;
+  const norm = () => snap ? P[key] / 2
+    : key === 'glide' ? Math.sqrt(clamp(P[key], 0, 1))
+    : P[key] / 48;
+  const position = () => h.setAttribute('y', yBot - clamp(norm(), 0, 1) * span);
+  drag(h, p => {
+    const u = clamp((yBot - p.y + 25) / span, 0, 1);
+    if (snap) P[key] = Math.round(u * 2);
+    else if (key === 'glide') P[key] = u * u;
+    else P[key] = Math.round(u * 48);
+    position(); setParam(ep, P[key]);
+  });
+  return { position };
+}
+const fGlide = fader('glideHandle', 'glide', EP.glide, false);
+const fBend  = fader('bendHandle', 'bend', EP.bend, false);
+const fRev   = fader('reverbHandle', 'reverb', EP.reverb, true);
+
+// ---------- performance XY pad ----------
+// left = tight (Strain high, end constricts) / right = open (Pinch low, centre widens)
+// down = more Cheek (whole canal clenches)
+const PAD = { x: 1096, y: 292, w: 523, h: 429 };
+const xyPad = $('xyPad');
+const cross = $('crosshair');
+
+function updateCross(p) {
+  $('chV').setAttribute('x1', p.x); $('chV').setAttribute('x2', p.x);
+  $('chV').setAttribute('y1', PAD.y); $('chV').setAttribute('y2', PAD.y + PAD.h);
+  $('chH').setAttribute('y1', p.y); $('chH').setAttribute('y2', p.y);
+  $('chH').setAttribute('x1', PAD.x); $('chH').setAttribute('x2', PAD.x + PAD.w);
+  $('chDot').setAttribute('cx', p.x); $('chDot').setAttribute('cy', p.y);
+}
+
+function padApply(p) {
+  const u = clamp((p.x - PAD.x) / PAD.w, 0, 1);
+  const v = clamp((p.y - PAD.y) / PAD.h, 0, 1);
+  P.strain = 1 - u;   // left  = high strain = end constricts
+  P.cheek  = v;       // down  = more cheek  = canal clenches
+  setParam(EP.strain, P.strain);
+  setParam(EP.cheek, P.cheek);
+  sStrain.position(); sCheek.position();
+  updateCross(p);
+}
+
+xyPad.addEventListener('pointerenter', e => { cross.setAttribute('opacity', '1'); updateCross(svgPoint(e)); });
+xyPad.addEventListener('pointerleave', () => cross.setAttribute('opacity', '0'));
+// mouse wheel over pad = Pinch (sphincter centre aperture)
+xyPad.addEventListener('wheel', e => {
+  e.preventDefault();
+  P.pinch = clamp(P.pinch + (e.deltaY < 0 ? 0.05 : -0.05), 0, 1);
+  setParam(EP.pinch, P.pinch);
+  sPinch.position();
+}, { passive: false });
+xyPad.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  xyPad.setPointerCapture(e.pointerId);
+  noteOn();
+  padApply(svgPoint(e));
+  const move = ev => padApply(svgPoint(ev));
+  const up = () => {
+    xyPad.removeEventListener('pointermove', move);
+    xyPad.removeEventListener('pointerup', up);
+    xyPad.removeEventListener('pointercancel', up);
+    noteOff();
+  };
+  xyPad.addEventListener('pointermove', move);
+  xyPad.addEventListener('pointerup', up);
+  xyPad.addEventListener('pointercancel', up);
+});
+
+// ---------- animated butt cross-section ----------
+//   Pinch  -> sphincter CENTRE width (high pinch = centre closed, low = wide open)
+//   Strain -> anal END constriction (+ flutter while sounding)
+//   Cheek  -> whole canal clench
+const CRACK = [[0, 97], [150, 79], [300, 55], [390, 49], [480, 54], [565, 66], [650, 82], [738, 95]];
+function crackHalf(y) {
+  for (let i = 0; i < CRACK.length - 1; i++) {
+    if (y <= CRACK[i + 1][0]) {
+      const t = (y - CRACK[i][0]) / (CRACK[i + 1][0] - CRACK[i][0]);
+      const s = t * t * (3 - 2 * t);
+      return CRACK[i][1] + s * (CRACK[i + 1][1] - CRACK[i][1]);
+    }
+  }
+  return CRACK[CRACK.length - 1][1];
+}
+
+function updateButt(t) {
+  const clench = 1 - P.cheek * 0.35;
+  const aperture = 0.10 + 0.90 * (1 - P.pinch);      // sphincter centre: low pinch = wide
+  const endClose = clamp(P.strain, 0, 1) * 0.92;     // end constricts with strain
+  const flutter = state.active ? P.strain * 4.5 * Math.sin(t * 26) : 0;
+  const ys = [0, 55, 120, 195, 270, 350, 430, 505, 575, 620, 660, 700, 738];
+  const left = [[0.5, 0.5]];
+  for (const y of ys) {
+    const base = crackHalf(y) * clench;
+    const kWaist = sstep(560, 630, y) * (1 - sstep(665, 720, y));  // sphincter centre band
+    const kEnd = sstep(685, 738, y);                              // anal end
+    let w = base * (1 - kWaist * (1 - aperture)) * (1 - kEnd * endClose);
+    w += flutter * (0.35 * kWaist + kEnd);
+    left.push([960 - Math.max(2, w), y]);
+  }
+  const lift = P.cheek * 12;
+  left.push([430, 762 - lift], [0.5, 736]);
+  $('cheekLPath').setAttribute('d', smoothClosed(left));
+  $('cheekRPath').setAttribute('d', smoothClosed(left.map(pt => [1920 - pt[0], pt[1]])));
+}
+
+(function animate(ts) {
+  const t = (ts || 0) / 1000;
+  const dt = Math.min(t - (animate.lastT || t), 0.05);
+  animate.lastT = t;
+  updateButt(t);
+  fx.update(dt);
+  // turbulent button edges: step the noise seed ~6x per second
+  const seed = Math.floor(t * 6) % 1000;
+  if (seed !== lastSeed) {
+    wobbleTurb.setAttribute('seed', seed);
+    lastSeed = seed;
+  }
+  requestAnimationFrame(animate);
+})(0);
+
+// ---------- presets ----------
+const PRESETS = [
+  { pinch: .85, strain: .80, cheek: .60, strainI: .85, atk: .005, dec: .05, sus: .70, rel: .25, patk: .004, pdec: .08, psus: .00, prel: .20, amt: 1.5, glide: .05, reverb: 1, bend: 12 },
+  { pinch: .55, strain: .90, cheek: .70, strainI: .70, atk: .002, dec: .30, sus: .20, rel: .08, patk: .002, pdec: .10, psus: .00, prel: .05, amt: 2.2, glide: .02, reverb: 2, bend: 12 },
+  { pinch: .70, strain: .60, cheek: .50, strainI: .90, atk: .002, dec: .05, sus: .10, rel: .03, patk: .001, pdec: .02, psus: .00, prel: .01, amt: 1.0, glide: .01, reverb: 0, bend: 12 },
+  { pinch: .60, strain: .45, cheek: .40, strainI: .60, atk: .006, dec: .12, sus: .50, rel: .50, patk: .006, pdec: .08, psus: .10, prel: .30, amt: 0.8, glide: .10, reverb: 1, bend: 12 },
+  { pinch: .80, strain: .55, cheek: .80, strainI: .40, atk: .004, dec: .40, sus: .40, rel: 1.20, patk: .004, pdec: .25, psus: .20, prel: .60, amt: 1.2, glide: .07, reverb: 1, bend: 12 },
+];
+
+function applyState() {
+  for (const k of Object.keys(EP)) setParam(EP[k], P[k]);
+  vol.fromParams(P.atk, P.dec, P.sus, P.rel); vol.draw();
+  pit.fromParams(P.patk, P.pdec, P.psus, P.prel); pit.draw();
+  sPinch.position(); sStrain.position(); sCheek.position();
+  fGlide.position(); fBend.position(); fRev.position();
+}
+
+function loadPreset(i) {
+  Object.assign(P, PRESETS[i]);
+  applyState();
+  document.querySelectorAll('.pill-btn').forEach(r => r.classList.remove('on'));
+  const g = $('p' + i);
+  if (g) g.querySelector('.pill-btn').classList.add('on');
+}
+for (let i = 0; i < 5; i++) $('p' + i).addEventListener('click', () => loadPreset(i));
+$('pR').addEventListener('click', () => {
+  const r = (a, b) => a + Math.random() * (b - a);
+  Object.assign(P, {
+    pinch: r(.25, .95), strain: r(.3, .95), cheek: r(.2, .8), strainI: r(.2, .9),
+    atk: Math.pow(10, r(-3, -0.5)), dec: Math.pow(10, r(-3, 0)), sus: r(.1, .95), rel: Math.pow(10, r(-3, .5)),
+    patk: Math.pow(10, r(-3, -1)), pdec: Math.pow(10, r(-3, -.3)), psus: r(0, .4), prel: Math.pow(10, r(-3, 0)),
+    amt: r(-1, 2.5), glide: r(0, .3), reverb: Math.floor(r(0, 3)), bend: 12,
+  });
+  applyState();
+});
+
+// ---------- keyboard ----------
+// piano: QWERTYUIOP = white keys (C4..E5), 1234567890 = black keys
+const WHITE = 'qwertyuiop';
+const BLACK = '1234567890';
+const KEY_TO_NOTE = {};
+// white keys: C D E F G A B C D E (C4=60)
+const WHITE_SEMIS = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
+const BLACK_SEMIS = [1, 3, null, 6, 8, 10, null, 13, 15, null]; // no black between E-F, B-C
+for (let i = 0; i < WHITE.length; i++) KEY_TO_NOTE[WHITE[i]] = 60 + WHITE_SEMIS[i];
+for (let i = 0; i < BLACK.length; i++) if (BLACK_SEMIS[i] !== null) KEY_TO_NOTE[BLACK[i]] = 60 + BLACK_SEMIS[i];
+const heldKeys = {};
+
+window.addEventListener('keydown', e => {
+  if (e.repeat) return;
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); noteOn(); return; }
+  if (/^f[1-5]$/.test(k)) { e.preventDefault(); loadPreset(+k.slice(1) - 1); return; }
+  if (k === 'z') { sendBend(0); return; }
+  if (k === 'x') { sendBend(16383); return; }
+  const n = KEY_TO_NOTE[k];
+  if (n !== undefined && !heldKeys[k]) {
+    heldKeys[k] = true;
+    noteOn(n);
+  }
+});
+window.addEventListener('keyup', e => {
+  const k = e.key.toLowerCase();
+  if (k === ' ') { noteOff(); return; }
+  if ('zx'.includes(k)) { sendBend(8192); return; }
+  if (heldKeys[k]) {
+    delete heldKeys[k];
+    if (Object.keys(heldKeys).length === 0) noteOff();
+  }
+});
+
+// ---------- MIDI ----------
+const ccMap = { pinch: null, strain: null, cheek: null };
+const learn = { listening: null };
+
+function onMIDI(data) {
+  const status = data[0] & 0xF0;
+  if (status === 0x90 && data[2] > 0) { lastNote = data[1]; noteOn(data[1], data[2]); }
+  else if (status === 0x80 || (status === 0x90 && data[2] === 0)) noteOff();
+  else if (status === 0xE0) sendMIDI(data[2] | (data[1] << 8) | (data[0] << 16));
+  else if (status === 0xB0) {
+    const cc = data[1], val = data[2] / 127;
+    if (learn.listening) {
+      ccMap[learn.listening] = cc;
+      setLearnLabel(learn.listening, cc);
+      stopListening();
+      return;
+    }
+    for (const k of ['pinch', 'strain', 'cheek']) {
+      if (ccMap[k] === cc) {
+        P[k] = val;
+        setParam(EP[k], val);
+        ({ pinch: sPinch.position, strain: sStrain.position, cheek: sCheek.position })[k]();
+      }
+    }
+  }
+}
+
+async function connectMIDI() {
+  if (!navigator.requestMIDIAccess) return;
+  try {
+    const midi = await navigator.requestMIDIAccess({ sysex: false, software: false });
+    for (const input of midi.inputs.values()) {
+      input.onmidimessage = e => { if (e.data) onMIDI(e.data); };
+    }
+  } catch (err) { /* denied */ }
+}
+
+// ---------- dialogs (black sheets, fade) ----------
+$('aboutBtn').addEventListener('click', () => $('about').classList.add('open'));
+$('aboutClose').addEventListener('click', () => $('about').classList.remove('open'));
+
+$('midiBtn').addEventListener('click', () => $('midiModal').classList.add('open'));
+$('midiClose').addEventListener('click', () => { stopListening(); $('midiModal').classList.remove('open'); });
+
+function cap(s) { return s[0].toUpperCase() + s.slice(1); }
+function setLearnLabel(param, cc) {
+  $('cc' + cap(param)).textContent = 'CC ' + cc;
+}
+function stopListening() {
+  if (!learn.listening) return;
+  const b = $('learn' + cap(learn.listening));
+  b.textContent = 'LEARN';
+  b.classList.remove('listening');
+  learn.listening = null;
+}
+function startListening(param) {
+  stopListening();
+  learn.listening = param;
+  const b = $('learn' + cap(param));
+  b.textContent = 'MOVE A KNOB...';
+  b.classList.add('listening');
+}
+$('learnPinch').addEventListener('click', () => learn.listening === 'pinch' ? stopListening() : startListening('pinch'));
+$('learnStrain').addEventListener('click', () => learn.listening === 'strain' ? stopListening() : startListening('strain'));
+$('learnCheek').addEventListener('click', () => learn.listening === 'cheek' ? stopListening() : startListening('cheek'));
+$('midiClear').addEventListener('click', () => {
+  ccMap.pinch = ccMap.strain = ccMap.cheek = null;
+  $('ccPinch').textContent = '\u2014';
+  $('ccStrain').textContent = '\u2014';
+  $('ccCheek').textContent = '\u2014';
+});
+
+// ---------- engine bootstrap ----------
+async function startAudio() {
+  if (connection) { $('overlay').classList.add('hidden'); return; }
+  try {
+    audioContext = new AudioContext({ latencyHint: 'interactive' });
+    connection = await patch.createAudioWorkletNodePatchConnection(audioContext, "brown-trombone");
+    connection.audioNode.connect(audioContext.destination);
+    setParam('in_modWheelOn', false);
+    applyState();
+    connectMIDI();
+    $('overlay').classList.add('hidden');
+  } catch (err) {
+    console.error(err);
+    alert('Failed to start audio engine:\n' + err.message);
+  }
+}
+
+$('overlay').addEventListener('click', e => { if (e.target === $('proceedBtn')) startAudio(); });
+$('proceedBtn').addEventListener('click', e => { e.stopPropagation(); startAudio(); });
+</script>
+</body>
+</html>
