@@ -83,6 +83,9 @@
       <feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="2" seed="1" result="n"/>
       <feDisplacementMap in="SourceGraphic" in2="n" scale="8" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
+    <clipPath id="clipLeftCheek">
+      <path d="M866.432 0.5L818.504 374.91L818.496 374.975L818.504 375.039L866.434 738.533L433.5 764.999L0.5 738.529V0.5H866.432Z"/>
+    </clipPath>
   </defs>
 
   <rect width="1920" height="1080" fill="url(#bgGrad)"/>
@@ -91,6 +94,14 @@
   <g id="butt">
     <path id="cheekLPath" fill="url(#cheekL)" stroke="#B56464" stroke-width="3"/>
     <path id="cheekRPath" fill="url(#cheekR)" stroke="#B56464" stroke-width="3"/>
+  </g>
+
+  <!-- Wet panel on the left cheek (mirrors Strain format) -->
+  <g id="wetPanel" clip-path="url(#clipLeftCheek)" pointer-events="none">
+    <rect x="234" y="557.5" width="131" height="156" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="299.5" y="617" font-size="21" font-weight="700" text-anchor="middle" fill="white">Wet</text>
+    <rect x="248" y="665" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="wetKnob" class="knob" x="282" y="668" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
   </g>
 
   <!-- performance XY pad: rectangle spanning the Pinch / Strain / Cheek panels -->
@@ -231,7 +242,7 @@
     <p style="margin-top:.7rem">Also it can be played by MIDI keyboard and controller.</p>
     <p style="margin-top:.9rem"><b>Controls</b></p>
     <p style="margin-top:.5rem"><b>Playing:</b> press and hold anywhere inside the dashed pad. <b>Left</b> = more Strain — the anal end constricts. <b>Right</b> = less Strain — the end relaxes. <b>Down</b> = more Cheek — the whole canal clenches. <b>Mouse wheel over the pad</b> = Pinch — the sphincter centre tightens (scroll up) or opens (scroll down). Keep holding and move to morph the sound; the cross-section follows in real time.</p>
-    <p style="margin-top:.7rem"><b>Fine controls:</b> drag the pink ADSR dots for the volume/pitch envelopes, the panel knobs, and the Glide / Bend Range / Reverb faders. SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend.</p>
+    <p style="margin-top:.7rem"><b>Fine controls:</b> drag the pink ADSR dots for the volume/pitch envelopes, the panel knobs, and the Glide / Bend Range / Reverb faders. <b>Wet</b> (knob on the left cheek) blends a water layer that only sounds while the fart blasts and follows the Volume ADSR — 0 turns it off. SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend.</p>
     <p style="margin-top:.7rem"><b>Piano keys:</b> play with your computer keyboard like a piano, or click the on-screen keys below the presets —<br/>
     <span style="font-family:Consolas,monospace;color:#ddd;background:#111;padding:.4rem .6rem;display:inline-block;margin-top:.3rem">
     white&nbsp;keys: Q W E R T Y U I O P &nbsp;·&nbsp; black&nbsp;keys: 1 2 3 4 5 6 7 8 9 0</span><br/>
@@ -267,7 +278,7 @@ const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
 let connection = null, audioContext = null;
 const state = { active: false };
 
-function setParam(ep, v) { if (connection) connection.sendEventOrValue(ep, v); }
+function setParam(ep, v) { if (connection && ep) connection.sendEventOrValue(ep, v); }
 function sendMIDI(word) { if (connection) connection.sendMIDIInputEvent('in_midi', word); }
 
 let lastNote = 60;
@@ -277,11 +288,13 @@ function noteOn(note = lastNote, vel = 100) {
   $('xyPad').setAttribute('fill', 'rgba(255,255,255,0.10)');
   state.active = true;
   fx.emitBurst();
+  wetNoteOn();
 }
 function noteOff() {
   sendMIDI((0x80 << 16) | ((lastNote & 0x7F) << 8) | 0);
   $('xyPad').setAttribute('fill', 'rgba(255,255,255,0.05)');
   state.active = false;
+  wetNoteOff();
 }
 function sendBend(v) {
   const lsb = v & 0x7F, msb = (v >> 7) & 0x7F;
@@ -330,7 +343,62 @@ function smoothClosed(pts) {
 
 function sstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
 
-// turbulent wobble filter primitives (buttons)
+// ---------- wet (water layer) ----------
+// Loops water.wav under the fart, gated by the Volume ADSR (mirrored in JS),
+// so the water only sounds while the fart blasts and follows its envelope.
+const wet = { raw: null, src: null, adsr: null, level: null };
+try {
+  const resp = await fetch('water.wav');
+  if (resp.ok) wet.raw = await resp.arrayBuffer();
+} catch (e) { console.warn('water.wav unavailable:', e); }
+
+function wetLevelChanged() {
+  if (wet.level) wet.level.gain.value = P.wet * 0.9;
+}
+
+async function wetStart(ctx) {
+  if (!wet.raw || wet.src) return;
+  try {
+    const buf = await ctx.decodeAudioData(wet.raw.slice(0));
+    wet.src = ctx.createBufferSource();
+    wet.src.buffer = buf;
+    wet.src.loop = true;
+    wet.adsr = ctx.createGain();          // envelope mirror of the Volume ADSR
+    wet.adsr.gain.value = 0;
+    wet.level = ctx.createGain();         // Wet amount
+    wet.level.gain.value = P.wet * 0.9;
+    wet.src.connect(wet.adsr).connect(wet.level).connect(ctx.destination);
+    wet.src.start();
+  } catch (e) { console.warn('water layer failed:', e); }
+}
+
+// JS mirror of the Volume ADSR
+function wetNoteOn() {
+  if (!wet.adsr || !audioContext) return;
+  const now = audioContext.currentTime;
+  const g = wet.adsr.gain;
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(g.value, now);
+  const peak = 0.9;
+  const a = Math.max(0.001, P.atk), d = Math.max(0.001, P.dec);
+  g.linearRampToValueAtTime(peak, now + a);
+  g.linearRampToValueAtTime(Math.max(0.0001, P.sus * peak), now + a + d);
+}
+function wetNoteOff() {
+  if (!wet.adsr || !audioContext) return;
+  const now = audioContext.currentTime;
+  const g = wet.adsr.gain;
+  g.cancelScheduledValues(now);
+  g.setValueAtTime(g.value, now);
+  const r = Math.max(0.005, P.rel);
+  g.linearRampToValueAtTime(0.0001, now + r);
+  g.linearRampToValueAtTime(0, now + r + 0.01);
+}
+// re-apply the shape when ADSR dots move while a note is held
+function wetFollowVol() {
+  if (wet.adsr && state.active && audioContext) wetNoteOn();
+}
+
 const wobbleTurb = document.querySelector('#wobble feTurbulence');
 let lastSeed = -1;
 
@@ -411,7 +479,7 @@ const fx = (() => {
 
 // ---------- parameters ----------
 const P = {
-  pinch: 0.5, strain: 0.7, cheek: 0.5, strainI: 0.5,
+  pinch: 0.5, strain: 0.7, cheek: 0.5, strainI: 0.5, wet: 0.0,
   atk: 0.053, dec: 0.14, sus: 0.39, rel: 1.12,
   patk: 0.053, pdec: 0.14, psus: 0.39, prel: 0.71, amt: 2,
   glide: 0.1, bend: 12, reverb: 1,
@@ -526,7 +594,8 @@ function makeADSR(prefix, px, py) {
     draw();
     const { atk, dec, sus, rel } = toParams();
     if (prefix === 'vol') { P.atk = atk; P.dec = dec; P.sus = sus; P.rel = rel;
-      setParam(EP.atk, atk); setParam(EP.dec, dec); setParam(EP.sus, sus); setParam(EP.rel, rel); }
+      setParam(EP.atk, atk); setParam(EP.dec, dec); setParam(EP.sus, sus); setParam(EP.rel, rel);
+      wetFollowVol(); }
     else { P.patk = atk; P.pdec = dec; P.psus = sus; P.prel = rel;
       setParam(EP.patk, atk); setParam(EP.pdec, dec); setParam(EP.psus, sus); setParam(EP.prel, rel); }
   }
@@ -552,6 +621,7 @@ function sliderH(knobId, pillX, pillW, key, ep) {
   drag(knob, p => {
     P[key] = clamp((p.x - kx0) / kSpan, 0, 1);
     position(); setParam(ep, P[key]);
+    if (key === 'wet') wetLevelChanged();
   });
   return { position };
 }
@@ -569,6 +639,7 @@ function sliderV(knobId, pillY, pillH, key, ep) {
 const sPinch  = sliderH('pinchKnob', 1110, 104, 'pinch', EP.pinch);
 const sStrain = sliderH('strainKnob', 1109, 104, 'strain', EP.strain);
 const sCheek  = sliderV('cheekKnob', 603.5, 104, 'cheek', EP.cheek);
+const sWet    = sliderH('wetKnob', 248, 104, 'wet', null); // local param, not a DSP endpoint
 
 // ---------- faders ----------
 function fader(handleId, key, ep, snap) {
@@ -819,8 +890,9 @@ function applyState() {
   for (const k of Object.keys(EP)) setParam(EP[k], P[k]);
   vol.fromParams(P.atk, P.dec, P.sus, P.rel); vol.draw();
   pit.fromParams(P.patk, P.pdec, P.psus, P.prel); pit.draw();
-  sPinch.position(); sStrain.position(); sCheek.position();
+  sPinch.position(); sStrain.position(); sCheek.position(); sWet.position();
   fGlide.position(); fBend.position(); fRev.position();
+  wetLevelChanged();
 }
 
 function loadPreset(i) {
@@ -959,6 +1031,7 @@ async function startAudio() {
     setParam('in_modWheelOn', false);
     applyState();
     connectMIDI();
+    wetStart(audioContext);
     $('overlay').classList.add('hidden');
   } catch (err) {
     console.error(err);
