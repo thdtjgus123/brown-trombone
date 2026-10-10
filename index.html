@@ -203,6 +203,9 @@
     <g id="pR" class="hit"><rect class="pill-btn" filter="url(#wobble)" x="1573" y="925" width="170" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/><text x="1658" y="955" text-anchor="middle">🎲 Random</text></g>
   </g>
 
+  <!-- on-screen piano (QWERTYUIOP white / 1245689 black, clickable) -->
+  <g id="piano"></g>
+
   <!-- About + MIDI buttons: filter on rect only -->
   <g id="aboutBtn" class="hit">
     <rect filter="url(#wobble)" x="40" y="34" width="112" height="48" rx="0" fill="#2A2119" stroke="#B56464" stroke-width="1.5"/>
@@ -229,9 +232,10 @@
     <p style="margin-top:.9rem"><b>Controls</b></p>
     <p style="margin-top:.5rem"><b>Playing:</b> press and hold anywhere inside the dashed pad. <b>Left</b> = more Strain — the anal end constricts. <b>Right</b> = less Strain — the end relaxes. <b>Down</b> = more Cheek — the whole canal clenches. <b>Mouse wheel over the pad</b> = Pinch — the sphincter centre tightens (scroll up) or opens (scroll down). Keep holding and move to morph the sound; the cross-section follows in real time.</p>
     <p style="margin-top:.7rem"><b>Fine controls:</b> drag the pink ADSR dots for the volume/pitch envelopes, the panel knobs, and the Glide / Bend Range / Reverb faders. SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend.</p>
-    <p style="margin-top:.7rem"><b>Piano keys:</b> play with your computer keyboard like a piano —<br/>
+    <p style="margin-top:.7rem"><b>Piano keys:</b> play with your computer keyboard like a piano, or click the on-screen keys below the presets —<br/>
     <span style="font-family:Consolas,monospace;color:#ddd;background:#111;padding:.4rem .6rem;display:inline-block;margin-top:.3rem">
-    white&nbsp;keys: Q W E R T Y U I O P &nbsp;·&nbsp; black&nbsp;keys: 1 2 3 4 5 6 7 8 9 0</span></p>
+    white&nbsp;keys: Q W E R T Y U I O P &nbsp;·&nbsp; black&nbsp;keys: 1 2 3 4 5 6 7 8 9 0</span><br/>
+    <span style="color:#aaa;font-size:.74rem">the pink marker above the on-screen keys shows the sounding note</span></p>
     <p style="margin-top:.7rem"><b>Shortcuts:</b> SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend · mouse wheel on pad = Pinch · mouse wheel on Pitch ADSR = env amount.</p>
     <p style="margin-top:.9rem;color:#888;font-size:.72rem">Engine: CompuFart © Audolon (alexmfink), MIT licence. Inspired by Pink Trombone by Neil Thapen.</p>
     <p style="color:#888;font-size:.72rem">Vibe-coded by Cybersonus (<a href="https://pearlorigin.org" target="_blank">https://pearlorigin.org</a>, <a href="https://x.com/cybersonus" target="_blank">https://x.com/cybersonus</a>)</p>
@@ -588,7 +592,116 @@ const fGlide = fader('glideHandle', 'glide', EP.glide, false);
 const fBend  = fader('bendHandle', 'bend', EP.bend, false);
 const fRev   = fader('reverbHandle', 'reverb', EP.reverb, true);
 
-// ---------- performance XY pad ----------
+// ---------- on-screen piano ----------
+// Q W E R T Y U I O P = white C..E(2 oct), 1 2 3 4 5 6 7 8 9 0 = black keys
+// sits under the preset cluster: x 1201..1739, y 981..1045
+const pianoG = $('piano');
+const PN = { x: 1201, y: 981, wW: 52, wH: 58, gap: 2 };
+PN.wTotal = PN.wW * 10 + PN.gap * 9;
+const WHITE_KEYS = [
+  { k: 'q', n: 60 }, { k: 'w', n: 62 }, { k: 'e', n: 64 }, { k: 'r', n: 65 },
+  { k: 't', n: 67 }, { k: 'y', n: 69 }, { k: 'u', n: 71 }, { k: 'i', n: 72 },
+  { k: 'o', n: 74 }, { k: 'p', n: 76 },
+];
+// black key positions: sits between white pair; k matches BLACK_SEMIS mapping
+const BLACK_KEYS = [
+  { k: '1', n: 61, after: 0 }, { k: '2', n: 63, after: 1 },
+  { k: '4', n: 66, after: 3 }, { k: '5', n: 68, after: 4 }, { k: '6', n: 70, after: 5 },
+  { k: '8', n: 73, after: 7 }, { k: '9', n: 75, after: 8 },
+];
+const pianoEls = {}; // note -> elements
+let pianoInd = null;
+
+(function buildPiano() {
+  // compact backdrop strip
+  const bg = document.createElementNS(NS, 'rect');
+  bg.setAttribute('x', PN.x - 10); bg.setAttribute('y', PN.y - 24);
+  bg.setAttribute('width', PN.wTotal + 20); bg.setAttribute('height', PN.wH + 50);
+  bg.setAttribute('rx', 12); bg.setAttribute('fill', '#2A2119');
+  bg.setAttribute('stroke', '#B56464'); bg.setAttribute('stroke-width', 1.5);
+  pianoG.appendChild(bg);
+  const title = document.createElementNS(NS, 'text');
+  title.setAttribute('x', PN.x - 2); title.setAttribute('y', PN.y - 6);
+  title.setAttribute('font-size', 12); title.setAttribute('font-weight', 700);
+  title.setAttribute('fill', '#9A8A72'); title.setAttribute('letter-spacing', 2);
+  title.textContent = 'PIANO';
+  pianoG.appendChild(title);
+
+  // white keys
+  for (let i = 0; i < WHITE_KEYS.length; i++) {
+    const wk = WHITE_KEYS[i];
+    const x = PN.x + i * (PN.wW + PN.gap);
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'hit');
+    const r = document.createElementNS(NS, 'rect');
+    r.setAttribute('x', x); r.setAttribute('y', PN.y);
+    r.setAttribute('width', PN.wW); r.setAttribute('height', PN.wH);
+    r.setAttribute('rx', 4); r.setAttribute('fill', '#E8DCC8');
+    r.setAttribute('stroke', '#B56464'); r.setAttribute('stroke-width', 1);
+    const lbl = document.createElementNS(NS, 'text');
+    lbl.setAttribute('x', x + PN.wW / 2); lbl.setAttribute('y', PN.y + PN.wH - 8);
+    lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('font-size', 14);
+    lbl.setAttribute('font-weight', 700); lbl.setAttribute('fill', '#3A2A1A');
+    lbl.setAttribute('font-family', 'Consolas, monospace');
+    lbl.textContent = wk.k.toUpperCase();
+    g.appendChild(r); g.appendChild(lbl);
+    g.addEventListener('pointerdown', e => { e.preventDefault(); noteOn(wk.n); g.setAttribute('opacity', '0.65'); });
+    const up = () => { noteOff(); g.setAttribute('opacity', '1'); };
+    g.addEventListener('pointerup', up);
+    g.addEventListener('pointerleave', () => { if (state.active) up(); });
+    g.addEventListener('pointercancel', up);
+    pianoG.appendChild(g);
+    pianoEls[wk.n] = { rect: r, g };
+  }
+
+  // black keys (overlap the boundary between white keys)
+  for (const bk of BLACK_KEYS) {
+    const bx = PN.x + bk.after * (PN.wW + PN.gap) + PN.wW - PN.gap / 2 - 15;
+    const g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'hit');
+    const r = document.createElementNS(NS, 'rect');
+    r.setAttribute('x', bx); r.setAttribute('y', PN.y);
+    r.setAttribute('width', 30); r.setAttribute('height', PN.wH * 0.62);
+    r.setAttribute('rx', 4); r.setAttribute('fill', '#241A12');
+    r.setAttribute('stroke', '#B56464'); r.setAttribute('stroke-width', 1);
+    const lbl = document.createElementNS(NS, 'text');
+    lbl.setAttribute('x', bx + 15); lbl.setAttribute('y', PN.y + PN.wH * 0.62 - 6);
+    lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('font-size', 13);
+    lbl.setAttribute('font-weight', 700); lbl.setAttribute('fill', '#E8DCC8');
+    lbl.setAttribute('font-family', 'Consolas, monospace');
+    lbl.textContent = bk.k;
+    g.appendChild(r); g.appendChild(lbl);
+    g.addEventListener('pointerdown', e => { e.preventDefault(); noteOn(bk.n); g.setAttribute('opacity', '0.65'); });
+    const up = () => { noteOff(); g.setAttribute('opacity', '1'); };
+    g.addEventListener('pointerup', up);
+    g.addEventListener('pointerleave', () => { if (state.active) up(); });
+    g.addEventListener('pointercancel', up);
+    pianoG.appendChild(g);
+    pianoEls[bk.n] = { rect: r, g };
+  }
+
+  // active-note indicator bar above the keys
+  const ind = document.createElementNS(NS, 'rect');
+  ind.setAttribute('x', PN.x); ind.setAttribute('y', PN.y - 2);
+  ind.setAttribute('width', PN.wW); ind.setAttribute('height', 6);
+  ind.setAttribute('rx', 3); ind.setAttribute('fill', '#D65A9A');
+  ind.setAttribute('opacity', '0');
+  pianoG.appendChild(ind);
+  pianoInd = ind;
+})();
+
+// move indicator to the key that is currently sounding (or hide it)
+function updatePianoInd() {
+  if (!pianoInd) return;
+  if (!state.active) { pianoInd.setAttribute('opacity', '0'); return; }
+  const el = pianoEls[lastNote];
+  if (!el) { pianoInd.setAttribute('opacity', '0'); return; }
+  const r = el.rect;
+  pianoInd.setAttribute('x', r.getAttribute('x'));
+  pianoInd.setAttribute('width', r.getAttribute('width'));
+  pianoInd.setAttribute('y', parseFloat(r.getAttribute('y')) - 8);
+  pianoInd.setAttribute('opacity', '0.85');
+}
 // left = tight (Strain high, end constricts) / right = open (Pinch low, centre widens)
 // down = more Cheek (whole canal clenches)
 const PAD = { x: 1096, y: 292, w: 523, h: 429 };
@@ -683,6 +796,7 @@ function updateButt(t) {
   animate.lastT = t;
   updateButt(t);
   fx.update(dt);
+  updatePianoInd();
   // turbulent button edges: step the noise seed ~6x per second
   const seed = Math.floor(t * 6) % 1000;
   if (seed !== lastSeed) {
