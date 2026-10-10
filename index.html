@@ -96,12 +96,34 @@
     <path id="cheekRPath" fill="url(#cheekR)" stroke="#B56464" stroke-width="3"/>
   </g>
 
-  <!-- Wet panel on the left cheek (mirrors Strain format) -->
+  <!-- Wet / Vibrato / Tremolo panels on the left cheek (mirror Strain format) -->
   <g id="wetPanel" clip-path="url(#clipLeftCheek)" pointer-events="none">
     <rect x="234" y="557.5" width="131" height="156" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
     <text x="299.5" y="617" font-size="21" font-weight="700" text-anchor="middle" fill="white">Wet</text>
     <rect x="248" y="665" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
     <rect id="wetKnob" class="knob" x="282" y="668" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+  </g>
+  <g id="vibPanel" clip-path="url(#clipLeftCheek)" pointer-events="none">
+    <rect x="390" y="557.5" width="131" height="156" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="455.5" y="617" font-size="21" font-weight="700" text-anchor="middle" fill="white">Vibrato</text>
+    <rect x="404" y="665" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="vibKnob" class="knob" x="438" y="668" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+    <!-- Vibrato Speed (above) -->
+    <rect x="390" y="437.5" width="131" height="92" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="455.5" y="474" font-size="18" font-weight="700" text-anchor="middle" fill="white">Vib Speed</text>
+    <rect x="404" y="490" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="vibSpdKnob" class="knob" x="438" y="493" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+  </g>
+  <g id="tremPanel" clip-path="url(#clipLeftCheek)" pointer-events="none">
+    <rect x="546" y="557.5" width="131" height="156" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="611.5" y="617" font-size="21" font-weight="700" text-anchor="middle" fill="white">Tremolo</text>
+    <rect x="560" y="665" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="tremKnob" class="knob" x="594" y="668" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
+    <!-- Tremolo Speed (above) -->
+    <rect x="546" y="437.5" width="131" height="92" rx="11.5" fill="white" fill-opacity="0.3" stroke="black" stroke-width="5"/>
+    <text x="611.5" y="474" font-size="18" font-weight="700" text-anchor="middle" fill="white">Trem Speed</text>
+    <rect x="560" y="490" width="104" height="28" rx="14" fill="white" fill-opacity="0.3"/>
+    <rect id="tremSpdKnob" class="knob" x="594" y="493" width="22" height="22" rx="11" fill="white" pointer-events="all"/>
   </g>
 
   <!-- performance XY pad: rectangle spanning the Pinch / Strain / Cheek panels -->
@@ -242,7 +264,7 @@
     <p style="margin-top:.7rem">Also it can be played by MIDI keyboard and controller.</p>
     <p style="margin-top:.9rem"><b>Controls</b></p>
     <p style="margin-top:.5rem"><b>Playing:</b> press and hold anywhere inside the dashed pad. <b>Left</b> = more Strain — the anal end constricts. <b>Right</b> = less Strain — the end relaxes. <b>Down</b> = more Cheek — the whole canal clenches. <b>Mouse wheel over the pad</b> = Pinch — the sphincter centre tightens (scroll up) or opens (scroll down). Keep holding and move to morph the sound; the cross-section follows in real time.</p>
-    <p style="margin-top:.7rem"><b>Fine controls:</b> drag the pink ADSR dots for the volume/pitch envelopes, the panel knobs, and the Glide / Bend Range / Reverb faders. <b>Wet</b> (knob on the left cheek) blends a water layer that only sounds while the fart blasts and follows the Volume ADSR — 0 turns it off. SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend.</p>
+    <p style="margin-top:.7rem"><b>Fine controls:</b> drag the pink ADSR dots for the volume/pitch envelopes, the panel knobs, and the Glide / Bend Range / Reverb faders. <b>Wet</b> (left cheek) blends a water layer that only sounds while the fart blasts and follows the Volume ADSR — 0 turns it off. <b>Vibrato</b> wobbles the pitch up to a 5th (7 semitones), <b>Tremolo</b> pulses the volume down to silence — each with its own <b>Speed</b> slider above (1–14 Hz). SPACE = hold to fart · F1–F5 = presets · Z / X = pitch bend.</p>
     <p style="margin-top:.7rem"><b>Piano keys:</b> play with your computer keyboard like a piano, or click the on-screen keys below the presets —<br/>
     <span style="font-family:Consolas,monospace;color:#ddd;background:#111;padding:.4rem .6rem;display:inline-block;margin-top:.3rem">
     white&nbsp;keys: Q W E R T Y U I O P &nbsp;·&nbsp; black&nbsp;keys: 1 2 3 4 5 6 7 8 9 0</span><br/>
@@ -282,15 +304,20 @@ function setParam(ep, v) { if (connection && ep) connection.sendEventOrValue(ep,
 function sendMIDI(word) { if (connection) connection.sendMIDIInputEvent('in_midi', word); }
 
 let lastNote = 60;
-function noteOn(note = lastNote, vel = 100) {
+// per-source note tracking so releasing one input doesn't kill another
+const activeSources = new Set();
+function noteOn(note = lastNote, vel = 100, source = 'global') {
   lastNote = note;
+  activeSources.add(source);
   sendMIDI((0x90 << 16) | ((note & 0x7F) << 8) | (vel & 0x7F));
   $('xyPad').setAttribute('fill', 'rgba(255,255,255,0.10)');
   state.active = true;
   fx.emitBurst();
   wetNoteOn();
 }
-function noteOff() {
+function noteOff(source = 'global') {
+  activeSources.delete(source);
+  if (activeSources.size > 0) return; // another source still holds the note
   sendMIDI((0x80 << 16) | ((lastNote & 0x7F) << 8) | 0);
   $('xyPad').setAttribute('fill', 'rgba(255,255,255,0.05)');
   state.active = false;
@@ -353,7 +380,21 @@ try {
 } catch (e) { console.warn('water.wav unavailable:', e); }
 
 function wetLevelChanged() {
-  if (wet.level) wet.level.gain.value = P.wet * 0.9;
+  if (!wet.level) return;
+  if (P.wet <= 0.001) {
+    // slider fully left: kill the water dead, ignore any pending envelope ramps
+    wet.level.gain.cancelScheduledValues(0);
+    wet.level.gain.value = 0;
+    if (wet.adsr) {
+      const now = audioContext ? audioContext.currentTime : 0;
+      wet.adsr.gain.cancelScheduledValues(now);
+      wet.adsr.gain.value = 0;
+    }
+  } else {
+    wet.level.gain.value = P.wet * 0.9;
+    // if a note is already sounding, re-open the envelope so water resumes
+    if (state.active && wet.adsr && audioContext) wetNoteOn();
+  }
 }
 
 async function wetStart(ctx) {
@@ -374,7 +415,7 @@ async function wetStart(ctx) {
 
 // JS mirror of the Volume ADSR
 function wetNoteOn() {
-  if (!wet.adsr || !audioContext) return;
+  if (!wet.adsr || !audioContext || P.wet <= 0.001) return;
   const now = audioContext.currentTime;
   const g = wet.adsr.gain;
   g.cancelScheduledValues(now);
@@ -390,13 +431,46 @@ function wetNoteOff() {
   const g = wet.adsr.gain;
   g.cancelScheduledValues(now);
   g.setValueAtTime(g.value, now);
-  const r = Math.max(0.005, P.rel);
+  const r = Math.max(0.005, P.rel); // follow the Volume ADSR release time
   g.linearRampToValueAtTime(0.0001, now + r);
   g.linearRampToValueAtTime(0, now + r + 0.01);
 }
 // re-apply the shape when ADSR dots move while a note is held
 function wetFollowVol() {
   if (wet.adsr && state.active && audioContext) wetNoteOn();
+}
+
+// ---------- vibrato (pitch LFO via MIDI bend) & tremolo (volume LFO) ----------
+// Tremolo: a gain node inserted between the engine worklet and the speakers.
+const tremNode = { gain: null };
+function tremConnect(ctx, node) {
+  try {
+    node.disconnect(ctx.destination);
+  } catch (e) { /* not connected yet */ }
+  tremNode.gain = ctx.createGain();
+  tremNode.gain.gain.value = 1;
+  node.connect(tremNode.gain).connect(ctx.destination);
+}
+function tremApply(t) {
+  if (!tremNode.gain) return 1;
+  const depth = P.trem; // 0..1 — full range, dips to silence at max
+  const hz = 1 + P.tremSpd * 13; // 1..14 Hz
+  return 1 - depth * (0.5 + 0.5 * Math.sin(t * 2 * Math.PI * hz));
+}
+// Vibrato: continuously re-send pitch bend while a note is held.
+const vibState = { lastSent: -1 };
+function vibApply(t) {
+  if (!state.active || P.vib <= 0.001) {
+    if (vibState.lastSent !== 8192) { sendBend(8192); vibState.lastSent = 8192; }
+    return;
+  }
+  const hz = 1 + P.vibSpd * 13; // 1..14 Hz
+  const semis = P.vib * 7 * Math.sin(t * 2 * Math.PI * hz); // up to a 5th (7 semitones)
+  const center = 8192;
+  const range = P.bend > 0 ? Math.min(P.bend, 24) : 2;
+  const b = Math.round(center + (semis / range) * 8191);
+  sendBend(b);
+  vibState.lastSent = b;
 }
 
 const wobbleTurb = document.querySelector('#wobble feTurbulence');
@@ -480,6 +554,7 @@ const fx = (() => {
 // ---------- parameters ----------
 const P = {
   pinch: 0.5, strain: 0.7, cheek: 0.5, strainI: 0.5, wet: 0.0,
+  vib: 0.0, trem: 0.0, vibSpd: 0.5, tremSpd: 0.5,
   atk: 0.053, dec: 0.14, sus: 0.39, rel: 1.12,
   patk: 0.053, pdec: 0.14, psus: 0.39, prel: 0.71, amt: 2,
   glide: 0.1, bend: 12, reverb: 1,
@@ -640,6 +715,10 @@ const sPinch  = sliderH('pinchKnob', 1110, 104, 'pinch', EP.pinch);
 const sStrain = sliderH('strainKnob', 1109, 104, 'strain', EP.strain);
 const sCheek  = sliderV('cheekKnob', 603.5, 104, 'cheek', EP.cheek);
 const sWet    = sliderH('wetKnob', 248, 104, 'wet', null); // local param, not a DSP endpoint
+const sVib    = sliderH('vibKnob', 404, 104, 'vib', null); // pitch vibrato depth
+const sTrem   = sliderH('tremKnob', 560, 104, 'trem', null); // volume tremolo depth
+const sVibSpd = sliderH('vibSpdKnob', 404, 104, 'vibSpd', null); // vibrato rate
+const sTremSpd = sliderH('tremSpdKnob', 560, 104, 'tremSpd', null); // tremolo rate
 
 // ---------- faders ----------
 function fader(handleId, key, ep, snap) {
@@ -716,8 +795,8 @@ let pianoInd = null;
     lbl.setAttribute('font-family', 'Consolas, monospace');
     lbl.textContent = wk.k.toUpperCase();
     g.appendChild(r); g.appendChild(lbl);
-    g.addEventListener('pointerdown', e => { e.preventDefault(); noteOn(wk.n); g.setAttribute('opacity', '0.65'); });
-    const up = () => { noteOff(); g.setAttribute('opacity', '1'); };
+    g.addEventListener('pointerdown', e => { e.preventDefault(); noteOn(wk.n, 100, 'piano'); g.setAttribute('opacity', '0.65'); });
+    const up = () => { noteOff('piano'); g.setAttribute('opacity', '1'); };
     g.addEventListener('pointerup', up);
     g.addEventListener('pointerleave', () => { if (state.active) up(); });
     g.addEventListener('pointercancel', up);
@@ -742,8 +821,8 @@ let pianoInd = null;
     lbl.setAttribute('font-family', 'Consolas, monospace');
     lbl.textContent = bk.k;
     g.appendChild(r); g.appendChild(lbl);
-    g.addEventListener('pointerdown', e => { e.preventDefault(); noteOn(bk.n); g.setAttribute('opacity', '0.65'); });
-    const up = () => { noteOff(); g.setAttribute('opacity', '1'); };
+    g.addEventListener('pointerdown', e => { e.preventDefault(); noteOn(bk.n, 100, 'piano'); g.setAttribute('opacity', '0.65'); });
+    const up = () => { noteOff('piano'); g.setAttribute('opacity', '1'); };
     g.addEventListener('pointerup', up);
     g.addEventListener('pointerleave', () => { if (state.active) up(); });
     g.addEventListener('pointercancel', up);
@@ -810,14 +889,14 @@ xyPad.addEventListener('wheel', e => {
 xyPad.addEventListener('pointerdown', e => {
   e.preventDefault();
   xyPad.setPointerCapture(e.pointerId);
-  noteOn();
+  noteOn(60, 100, 'pad');
   padApply(svgPoint(e));
   const move = ev => padApply(svgPoint(ev));
   const up = () => {
     xyPad.removeEventListener('pointermove', move);
     xyPad.removeEventListener('pointerup', up);
     xyPad.removeEventListener('pointercancel', up);
-    noteOff();
+    noteOff('pad');
   };
   xyPad.addEventListener('pointermove', move);
   xyPad.addEventListener('pointerup', up);
@@ -868,6 +947,10 @@ function updateButt(t) {
   updateButt(t);
   fx.update(dt);
   updatePianoInd();
+  // tremolo: modulate the master gain
+  if (tremNode.gain) tremNode.gain.gain.value = tremApply(t);
+  // vibrato: re-send bend at animation rate while holding
+  vibApply(t);
   // turbulent button edges: step the noise seed ~6x per second
   const seed = Math.floor(t * 6) % 1000;
   if (seed !== lastSeed) {
@@ -891,6 +974,7 @@ function applyState() {
   vol.fromParams(P.atk, P.dec, P.sus, P.rel); vol.draw();
   pit.fromParams(P.patk, P.pdec, P.psus, P.prel); pit.draw();
   sPinch.position(); sStrain.position(); sCheek.position(); sWet.position();
+  sVib.position(); sTrem.position(); sVibSpd.position(); sTremSpd.position();
   fGlide.position(); fBend.position(); fRev.position();
   wetLevelChanged();
 }
@@ -929,23 +1013,23 @@ const heldKeys = {};
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
   const k = e.key.toLowerCase();
-  if (k === ' ') { e.preventDefault(); noteOn(); return; }
+  if (k === ' ') { e.preventDefault(); noteOn(60, 100, 'space'); return; }
   if (/^f[1-5]$/.test(k)) { e.preventDefault(); loadPreset(+k.slice(1) - 1); return; }
   if (k === 'z') { sendBend(0); return; }
   if (k === 'x') { sendBend(16383); return; }
   const n = KEY_TO_NOTE[k];
   if (n !== undefined && !heldKeys[k]) {
     heldKeys[k] = true;
-    noteOn(n);
+    noteOn(n, 100, 'keys');
   }
 });
 window.addEventListener('keyup', e => {
   const k = e.key.toLowerCase();
-  if (k === ' ') { noteOff(); return; }
+  if (k === ' ') { noteOff('space'); return; }
   if ('zx'.includes(k)) { sendBend(8192); return; }
   if (heldKeys[k]) {
     delete heldKeys[k];
-    if (Object.keys(heldKeys).length === 0) noteOff();
+    if (Object.keys(heldKeys).length === 0) noteOff('keys');
   }
 });
 
@@ -955,8 +1039,8 @@ const learn = { listening: null };
 
 function onMIDI(data) {
   const status = data[0] & 0xF0;
-  if (status === 0x90 && data[2] > 0) { lastNote = data[1]; noteOn(data[1], data[2]); }
-  else if (status === 0x80 || (status === 0x90 && data[2] === 0)) noteOff();
+  if (status === 0x90 && data[2] > 0) { lastNote = data[1]; noteOn(data[1], data[2], 'midi'); }
+  else if (status === 0x80 || (status === 0x90 && data[2] === 0)) noteOff('midi');
   else if (status === 0xE0) sendMIDI(data[2] | (data[1] << 8) | (data[0] << 16));
   else if (status === 0xB0) {
     const cc = data[1], val = data[2] / 127;
@@ -1027,7 +1111,8 @@ async function startAudio() {
   try {
     audioContext = new AudioContext({ latencyHint: 'interactive' });
     connection = await patch.createAudioWorkletNodePatchConnection(audioContext, "brown-trombone");
-    connection.audioNode.connect(audioContext.destination);
+    // tremolo sits between the engine and the speakers
+    tremConnect(audioContext, connection.audioNode);
     setParam('in_modWheelOn', false);
     applyState();
     connectMIDI();
